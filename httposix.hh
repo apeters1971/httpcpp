@@ -17,6 +17,7 @@ class HttPosixFileStreamer {
  public:
   int Open(const std::string host,
 	   int port,
+	   bool ssl,
 	   const std::string path);
   int Close();
   off_t Seek(off_t newoffset);
@@ -63,5 +64,5 @@ private:
   std::condition_variable cv;
   bool ready;
   
-  static int httpGet(std::string host, int port, std::string path, int fd, HttPosixFileStreamer* streamer );
+  static int httpGet(std::string host, int port, bool ssl, std::string path, int fd, HttPosixFileStreamer* streamer );
 };

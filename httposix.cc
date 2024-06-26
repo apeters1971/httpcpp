@@ -6,13 +6,19 @@
 #include "httplib.h"
 #include "httposix.hh"
 /* -------------------------------------------------------------------------- */
+
+#define BUFFER_SIZE 256*1024
+
 int HttPosixFileStreamer::Open(const std::string host,
 			       int port,
+			       bool ssl,
 			       const std::string path) {
   std::cerr << "http(get): " <<  host << ":" << port << " " << path << std::endl;
-  int retc = pipe(pipefd);
+
+  int retc = socketpair(AF_UNIX, SOCK_STREAM, 0, pipefd);
+  //  int retc = pipe(pipefd);
   
-  ft = std::make_unique<std::future<int>>(std::async(std::launch::async, httpGet, host, port, path, pipefd[1], this));
+  ft = std::make_unique<std::future<int>>(std::async(std::launch::async, httpGet, host, port, ssl, path, pipefd[1], this));
   return pipefd[1];
 }    
 
@@ -39,8 +45,7 @@ int HttPosixFileStreamer::Read(char* buffer, size_t len) {
   size_t total_r=0;
   size_t r=0;
   do {
-    char buffer[PIPE_BUF];
-    size_t toread = ((len-total_r)>PIPE_BUF)? PIPE_BUF:(len-total_r);
+    size_t toread = ((len-total_r)>BUFFER_SIZE)? BUFFER_SIZE:(len-total_r);
     //    std::cerr << "[toread] " << toread << std::endl;
     r = ::read(pipefd[0], buffer+total_r, toread);
     //    std::cerr << "[read] " << r << std::endl;
@@ -52,8 +57,22 @@ int HttPosixFileStreamer::Read(char* buffer, size_t len) {
 }
 
 /* -------------------------------------------------------------------------- */
-int HttPosixFileStreamer::httpGet(std::string host, int port, std::string path, int fd, HttPosixFileStreamer* streamer){
-  httplib::Client cli(host, port);
+int HttPosixFileStreamer::httpGet(std::string host, int port, bool ssl, std::string path, int fd, HttPosixFileStreamer* streamer){
+
+  std::string uri = (ssl?std::string("https://"):std::string("http://")) + host + std::string(":") + std::to_string(port);
+  httplib::Client cli(uri);
+
+  const char* b=0;
+  // Use your CA bundle
+  if ((b = getenv("HTTPCPP_CA_BUNDLE"))) {
+    cli.set_ca_cert_path(std::string(b));
+  }
+
+  // Disable cert verification
+
+  if ((b = getenv("HTTPCPP_NO_VERIFY")) && ((std::string(b) == "off") || (std::string(b) == "false") || (std::string(b) == "1"))) {
+    cli.enable_server_certificate_verification(false);
+  }
   std::string body;
   
   httplib::Headers hd;
@@ -76,7 +95,12 @@ int HttPosixFileStreamer::httpGet(std::string host, int port, std::string path, 
 		       //		       std::cerr << "recv: " << data_length << std::endl;
 		       return true; // return 'false' if you want to cancel the request.
 		     });
-  
+  if (!res) {
+    auto resp = new httplib::Response();
+    resp->status = (int)res.error();
+    streamer->setResponse(*resp);
+    streamer->NotifyHeader();
+  }
   ::close(fd);
   return 0;
 } 

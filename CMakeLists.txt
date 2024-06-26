@@ -9,6 +9,9 @@ set(SOURCE_FILES httposix.cc httposix.hh httplib.h httplib.cc)
 # Add shared library target
 add_library(httposix SHARED ${SOURCE_FILES})
 
+# Enable Openssl
+add_definitions(-DCPPHTTPLIB_OPENSSL_SUPPORT=1)
+
 # Optionally, set any compiler flags or include directories
 # target_compile_options(httposix PRIVATE ...)
 # target_include_directories(httposix PRIVATE ...)
@@ -17,7 +20,7 @@ add_library(httposix SHARED ${SOURCE_FILES})
 add_executable(httpget httpget.cc)
 
 # Link the executable to the library
-target_link_libraries(httpget PRIVATE httposix)
+target_link_libraries(httpget PRIVATE httposix ssl)
 
 # Optionally, set any compiler flags or include directories
 # target_compile_options(httposix PRIVATE ...)
