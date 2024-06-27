@@ -426,6 +426,13 @@ private:
     }
 
     m_scheme = std::string(scheme_start, scheme_end);
+    if (m_scheme == "https") {
+      m_port = 443;
+    } else if (m_scheme == "http") {
+      m_port = 80;
+    } else if (m_scheme == "root") {
+      m_port = 1094;
+    }
     return scheme_end;
   };
 
@@ -488,6 +495,9 @@ private:
       // We can now build the path based on what remains in the content string,
       // since that's all that exists after the host and optional port component.
       m_path = std::string(path_start, path_end);
+      if (m_path.empty()) {
+	m_path = "/";
+      }
     }
     return content_end;
   };
