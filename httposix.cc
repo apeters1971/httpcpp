@@ -13,7 +13,7 @@ int HttPosixFileStreamer::Open(const std::string host,
 			       int port,
 			       bool ssl,
 			       const std::string path) {
-  std::cerr << "http(get): " <<  host << ":" << port << " " << path << std::endl;
+  //  std::cerr << "http(get): " <<  host << ":" << port << " " << path << std::endl;
 
   int retc = socketpair(AF_UNIX, SOCK_STREAM, 0, pipefd);
   //  int retc = pipe(pipefd);
