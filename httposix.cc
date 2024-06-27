@@ -57,44 +57,31 @@ int HttPosixFileStreamer::Read(char* buffer, size_t len) {
 }
 
 /* -------------------------------------------------------------------------- */
-int HttPosixFileStreamer::httpGet(std::string host, int port, bool ssl, std::string path, int fd, HttPosixFileStreamer* streamer){
-
-  std::string uri = (ssl?std::string("https://"):std::string("http://")) + host + std::string(":") + std::to_string(port);
-  httplib::Client cli(uri);
-
-  const char* b=0;
-  // Use your CA bundle
-  if ((b = getenv("HTTPCPP_CA_BUNDLE"))) {
-    cli.set_ca_cert_path(std::string(b));
-  }
-
-  // Disable cert verification
-
-  if ((b = getenv("HTTPCPP_NO_VERIFY")) && ((std::string(b) == "off") || (std::string(b) == "false") || (std::string(b) == "1"))) {
-    cli.enable_server_certificate_verification(false);
-  }
+int HttPosixFileStreamer::httpGet(const std::string& host, int port, bool ssl, const std::string& path, int fd, HttPosixFileStreamer* streamer){
+  
+  std::unique_ptr<httplib::Client> cli = HttPosix::Client(host, port, ssl);
   std::string body;
-  
   httplib::Headers hd;
-  cli.set_follow_location(true);
-  
-  auto res = cli.Get(
-		     path,
-		     hd,
-		     [&](const httplib::Response &resp) {
-		       if (0) {
-			 std::cerr << "Response: " << resp.status << std::endl;
-		       }
-		       streamer->setResponse(resp);
-		       streamer->NotifyHeader();
-		       return true; // return 'false' if you want to cancel the request.
-		     },
-		     [&](const char *data, size_t data_length) {
-		       //		       std::cerr << "[write] " << data_length << std::endl;
-		       ::write(fd, data, data_length);
-		       //		       std::cerr << "recv: " << data_length << std::endl;
-		       return true; // return 'false' if you want to cancel the request.
-		     });
+
+  cli->set_follow_location(true);
+  auto res = cli->Get(
+		      path,
+		      hd,
+		      [&](const httplib::Response &resp) {
+			if (0) {
+			  std::cerr << "Response: " << resp.status << std::endl;
+			}
+			streamer->setResponse(resp);
+			streamer->NotifyHeader();
+			return true; // return 'false' if you want to cancel the request.
+		      },
+		      [&](const char *data, size_t data_length) {
+			//		       std::cerr << "[write] " << data_length << std::endl;
+			::write(fd, data, data_length);
+			//		       std::cerr << "recv: " << data_length << std::endl;
+			return true; // return 'false' if you want to cancel the request.
+		      });
+
   if (!res) {
     auto resp = new httplib::Response();
     resp->status = (int)res.error();
@@ -111,3 +98,61 @@ void HttPosixFileStreamer::setResponse(const httplib::Response& resp) {
   size = response->get_header_value_u64("Content-Length");
 }
 
+/* -------------------------------------------------------------------------- */
+int
+HttPosix::Stat(const std::string host,
+	       int port,
+	       bool ssl,
+	       const std::string path,
+	       struct stat& buf,
+	       const httplib::Headers& request_hd,
+	       httplib::Headers& response_hd)
+{
+  auto cli = HttPosix::Client(host, port, ssl);
+  auto res = cli->Head(path, request_hd);
+  if (res ) {
+    std::cerr << std::setw(24) << std::left << "Status" << ": " << res->status << std::endl;
+    for (auto i:res->headers) {
+      std::cerr << std::setw(24) << std::left << i.first << ": " << i.second  << std::endl;
+    }
+    response_hd = res->headers;
+  }
+  return 0;
+}
+
+/* -------------------------------------------------------------------------- */
+int
+HttPosix::Mkdir(const std::string host,
+		int port,
+		bool ssl,
+		const std::string path)
+{
+}
+
+/* -------------------------------------------------------------------------- */
+int
+HttPosix::Delete(const std::string host,
+		 int port,
+		 bool ssl,
+		 const std::string path)
+{
+}
+
+/* -------------------------------------------------------------------------- */
+std::unique_ptr<httplib::Client>
+HttPosix::Client(const std::string host, int port, bool ssl) {
+  std::string uri = (ssl?std::string("https://"):std::string("http://")) + host + std::string(":") + std::to_string(port);
+  auto cli =  std::make_unique<httplib::Client>(uri);
+
+  // Use your CA bundle
+  const char* b=0;
+  if ((b = getenv("HTTPCPP_CA_BUNDLE"))) {
+    cli->set_ca_cert_path(std::string(b));
+  }
+
+  // Disable cert verification
+  if ((b = getenv("HTTPCPP_NO_VERIFY")) && ((std::string(b) == "off") || (std::string(b) == "false") || (std::string(b) == "1"))) {
+    cli->enable_server_certificate_verification(false);
+  }
+  return cli;
+}

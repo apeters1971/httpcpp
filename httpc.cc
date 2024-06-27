@@ -161,8 +161,12 @@ int main(int argc, char* argv[]) {
     std::cerr << "error: not implemented" << std::endl;
     return 1;
   } else if ( command == "head" ) {
-    std::cerr << "error: not implemented" << std::endl;
-    return 1;
+    uri headuri(destination);
+    httplib::Headers request_hd;
+    httplib::Headers response_hd;
+    struct stat buf;
+    auto result = HttPosix::Stat(headuri.get_host(), headuri.get_port(), (headuri.get_scheme() == "https"), headuri.get_path(), buf, request_hd, response_hd);
+    return 0;
   } else if ( command == "cp" ) {
     std::cerr << "error: not implemented" << std::endl;
     return 1;

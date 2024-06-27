@@ -17,13 +17,13 @@ add_definitions(-DCPPHTTPLIB_OPENSSL_SUPPORT=1)
 # target_include_directories(httposix PRIVATE ...)
 
 # Add executable target
-add_executable(httpget httpget.cc)
+add_executable(httpc  httpc.cc)
 
 # Link the executable to the library
-target_link_libraries(httpget PRIVATE httposix ssl)
+target_link_libraries(httpc PRIVATE httposix ssl)
 
 # Optionally, set any compiler flags or include directories
 # target_compile_options(httposix PRIVATE ...)
 # target_include_directories(httposix PRIVATE ...)
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O2")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O2 -g")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -g")

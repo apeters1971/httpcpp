@@ -13,6 +13,31 @@ namespace httplib {
   class Response;
 }
 
+class HttPosix {
+public:
+  static int Stat(const std::string host,
+		  int port,
+		  bool ssl,
+		  const std::string path,
+		  struct stat& buf,
+		  const httplib::Headers& request_hd,
+		  httplib::Headers& response_hd);
+
+  static int Mkdir(const std::string host,
+		   int port,
+		   bool ssl,
+		   const std::string path);
+
+  static int Delete(const std::string host,
+		    int port,
+		    bool ssl,
+		    const std::string path);
+
+  static std::unique_ptr<httplib::Client> Client(const std::string host, int port, bool ssl);
+
+private:
+};
+
 class HttPosixFileStreamer {
  public:
   int Open(const std::string host,
@@ -28,6 +53,7 @@ class HttPosixFileStreamer {
     pipefd[1]=-1;
     location = 0;
     size = 0;
+    ready = false;
   }
   ~HttPosixFileStreamer() {
     Close();
@@ -64,5 +90,5 @@ private:
   std::condition_variable cv;
   bool ready;
   
-  static int httpGet(std::string host, int port, bool ssl, std::string path, int fd, HttPosixFileStreamer* streamer );
+  static int httpGet(const std::string& host, int port, bool ssl, const std::string& path, int fd, HttPosixFileStreamer* streamer );
 };
