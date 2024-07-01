@@ -320,6 +320,20 @@ public:
     return m_fragment;
   };
 
+
+  std::string get_pathcgi() const
+  {
+    std::string pcgi= m_path;
+    if (m_query.length()) {
+      pcgi += "?";
+      pcgi += m_query;
+      if (m_fragment.length()) {
+	pcgi += "#";
+	pcgi += m_fragment;
+      }
+    }
+    return pcgi;
+  }
   std::string to_string() const
   {
     std::string full_uri;

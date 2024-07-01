@@ -43,7 +43,15 @@ class HttPosixFileStreamer {
   int Open(const std::string host,
 	   int port,
 	   bool ssl,
-	   const std::string path);
+	   const std::string path,
+	   const httplib::Headers& request_header);
+
+  int _Open(const std::string host,
+	   int port,
+	   bool ssl,
+	   const std::string path,
+	   const httplib::Headers& request_header);
+  
   int Close();
   off_t Seek(off_t newoffset);
   int Read(char* buffer, size_t len);
@@ -89,6 +97,79 @@ private:
   std::mutex mtx;
   std::condition_variable cv;
   bool ready;
-  
+  httplib::Headers request_header;
   static int httpGet(const std::string& host, int port, bool ssl, const std::string& path, int fd, HttPosixFileStreamer* streamer );
 };
+
+class HttPosixFile {
+public:  
+  int Open(const std::string host,
+	   int port,
+	   bool ssl,
+	   const std::string path,
+	   const httplib::Headers& request_header);
+
+  int _Open(const std::string host,
+	    int port,
+	    bool ssl,
+	    const std::string path,
+	    const httplib::Headers& request_header);
+
+  int ReOpen() {
+    if (isopen) {
+      if (!Valid()) {
+	return _Open(location.host, location.port, location.ssl, location.path, request_header);
+      } else {
+	return 0;
+      }
+    } else {
+      return -EINVAL;
+    }
+  }
+  
+  int Close();
+
+  // vector reads
+  int ReadV(const httplib::Ranges& ranges, void* buffer);
+  // normal reads
+  int Read(char* buffer, off_t offset, size_t len);
+  HttPosixFile() {
+    size = 0;
+    isopen = false;
+    location_validity=0;
+  }
+  ~HttPosixFile() {
+    Close();
+  }
+
+  size_t Size() { return size;}
+  bool Valid() {
+    if (!location_validity) { return true; }
+    return (location_validity > time(NULL));
+  }
+
+  httplib::Result& Result() { return res; }
+
+  struct Location {
+    Location(const std::string& host, int port, bool ssl, const std::string& path) : host(host), port(port), ssl(ssl), path(path) {}
+    Location() {}
+    std::string host;
+    int port;
+    bool ssl;
+    std::string path;
+  };
+    
+private:
+  std::atomic<off_t> offset;
+  std::atomic<size_t> size;
+  std::atomic<bool> isopen;
+  std::atomic<time_t> location_validity;
+  std::mutex mtx;
+  Location location;
+  Location redirection;
+  
+  httplib::Headers request_header;
+  httplib::Headers response_header;
+  httplib::Result res;
+};
+
