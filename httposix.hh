@@ -15,7 +15,7 @@ namespace httplib {
 
 class HttPosix {
 public:
-  static int Stat(const std::string host,
+  static httplib::Error Stat(const std::string host,
 		  int port,
 		  bool ssl,
 		  const std::string path,
@@ -158,7 +158,9 @@ public:
     bool ssl;
     std::string path;
   };
-    
+
+  std::atomic<bool> debug;
+
 private:
   std::atomic<off_t> offset;
   std::atomic<size_t> size;

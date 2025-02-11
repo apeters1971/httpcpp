@@ -133,10 +133,17 @@ int main(int argc, char* argv[]) {
 	// return partial contents
 	if (ranges.size() == 1) {
 	  std::unique_ptr<HttPosixFile> file(new HttPosixFile);
+	  file->debug = d_flag;
 	  int rc = file->Open(geturi.get_host(), geturi.get_port(), (geturi.get_scheme() == "https"), geturi.get_pathcgi(), request_hd);
 	  if (rc) {
+	    std::cerr << "got an error" << std::endl;
 	    const httplib::Result& result = file->Result();
-	    std::cerr << "error: unable to open file from '" << source << "' " << result.value().status << " : [ " << httplib::status_message(result.value().status) << " ]" <<std::endl;
+	    if (result.error() != httplib::Error::Success) {
+	      // this comes from the connection layer
+	      std::cerr << "error: unable to open file from '" << source << "' " << result.error() << " : [ " << httplib::to_string( result.error()) << " ]" <<std::endl;
+	    } else {
+	      std::cerr << "error: unable to open file from '" << source << "' " << result.value().status << " : [ " << httplib::status_message(result.value().status) << " ]" <<std::endl;
+	    }
 	    return 1;
 	  }
 	  // single range request
@@ -145,7 +152,11 @@ int main(int argc, char* argv[]) {
 	  auto r = file->Read(&buffer[0], ranges[0].first, ranges[0].second-ranges[0].first);
 	  if (r<0) {
 	    const httplib::Result& result = file->Result();
-	    std::cerr << "error: failed to read requested range from '" << source << "' " << result.value().status << " : [ " << httplib::status_message(result.value().status) << " ]" <<std::endl;
+	    if (result.error() != httplib::Error::Success) {
+	      std::cerr << "error: failed to read requested range from '" << source << "' " << result.error() << " : [ " << httplib::to_string(result.error()) << " ]" <<std::endl;
+	    } else {
+	      std::cerr << "error: failed to read requested range from '" << source << "' " << result.value().status << " : [ " << httplib::status_message(result.value().status) << " ]" <<std::endl;
+	    }
 	    return 1;
 	  }
 	  file->Close();
@@ -153,10 +164,16 @@ int main(int argc, char* argv[]) {
 	} else {
 	  // multi range request
 	  std::unique_ptr<HttPosixFile> file(new HttPosixFile);
+	  file->debug = d_flag;
 	  int rc = file->Open(geturi.get_host(), geturi.get_port(), (geturi.get_scheme() == "https"), geturi.get_pathcgi(), request_hd);
 	  if (rc) {
 	    const httplib::Result& result = file->Result();
-	    std::cerr << "error: unable to open file from '" << source << "' " << result.value().status << " : [ " << httplib::status_message(result.value().status) << " ]" <<std::endl;
+	    if (result.error() != httplib::Error::Success) {
+	      // this comes from the connection layer
+	      std::cerr << "error: unable to open file from '" << source << "' " << result.error() << " : [ " << httplib::to_string( result.error()) << " ]" <<std::endl;
+	    } else {
+	      std::cerr << "error: unable to open file from '" << source << "' " << result.value().status << " : [ " << httplib::status_message(result.value().status) << " ]" <<std::endl;
+	    }
 	    return 1;
 	  }
 	  auto buffer_size = 0;
@@ -211,7 +228,7 @@ int main(int argc, char* argv[]) {
 	if (d_flag) {
 	  std::cerr << "[debug]" << "total size " << streamer->Size() << std::endl;
 	}
-	size_t bs = 256*1024;
+	size_t bs = 100200;
 	std::vector<char> buffer(bs);
 	
 	do {
@@ -245,6 +262,10 @@ int main(int argc, char* argv[]) {
     httplib::Headers response_hd;
     struct stat buf;
     auto result = HttPosix::Stat(headuri.get_host(), headuri.get_port(), (headuri.get_scheme() == "https"), headuri.get_pathcgi(), buf, request_hd, response_hd);
+    if (result != httplib::Error::Success) {
+      std::cerr << "error: unable to open file from '" << source << "' " << result << " : [ " << httplib::to_string( result ) << " ]" <<std::endl;
+      return 1;
+    }
     return 0;
   } else if ( command == "cp" ) {
     std::cerr << "error: not implemented" << std::endl;

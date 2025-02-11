@@ -8,7 +8,7 @@
 #include "uri.hh"
 /* -------------------------------------------------------------------------- */
 
-#define BUFFER_SIZE 256*1024
+#define BUFFER_SIZE 100200
 
 int HttPosixFileStreamer::Open(const std::string host,
 			       int port,
@@ -101,7 +101,7 @@ void HttPosixFileStreamer::setResponse(const httplib::Response& resp) {
 }
 
 /* -------------------------------------------------------------------------- */
-int
+httplib::Error
 HttPosix::Stat(const std::string host,
 	       int port,
 	       bool ssl,
@@ -118,8 +118,10 @@ HttPosix::Stat(const std::string host,
       std::cerr << std::setw(24) << std::left << i.first << ": " << i.second  << std::endl;
     }
     response_hd = res->headers;
+    return httplib::Error::Success;
+  } else {
+    return res.error();
   }
-  return 0;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -186,15 +188,21 @@ int HttPosixFile::_Open(const std::string host,
 		       const std::string path,
 		       const httplib::Headers& request_header)
 {
+
+  if (debug) {
+    std::cerr << "[debug] Open [" << host << ":" << port << "{" << (ssl?std::string("https"):std::string("http")) << "} ]" << std::endl;
+  }
   this->request_header = request_header;
   auto cli = HttPosix::Client(host, port, ssl);
   res = cli->Get(path, request_header);
   
   if (res ) {
-    //    std::cerr << std::setw(24) << std::left << "Status" << ": " << res->status << std::endl;
-    //    for (auto i:res->headers) {
-    //      std::cerr << std::setw(24) << std::left << i.first << ": " << i.second  << std::endl;
-    //    }
+    if (debug) {
+      std::cerr << "[debug]" << std::setw(24) << std::left << "Status" << ": " << res->status << std::endl;
+      for (auto i:res->headers) {
+	std::cerr << "[debug]" << std::setw(24) << std::left << i.first << ": " << i.second  << std::endl;
+      }
+    }
     response_header = res->headers;
     isopen = true;
     if (res->has_header("Location")) {
@@ -206,6 +214,13 @@ int HttPosixFile::_Open(const std::string host,
 	redirection.port = geturi.get_port();
 	redirection.ssl  = (geturi.get_scheme() == "https");
 	redirection.path = geturi.get_pathcgi();
+	if (debug) {
+	  std::cerr << "[debug] redirection.host     : " << redirection.host << std::endl;
+	  std::cerr << "[debug] redirection.port     : " << redirection.port << std::endl;
+	  std::cerr << "[debug] redirection.ssl      : " << redirection.ssl  << std::endl;
+	  std::cerr << "[debug] redirection.path     : " << redirection.path << std::endl;
+	  std::cerr << "[debug] redirection.validity : " << location_validity << std::endl;
+	}
       } catch (...) {
 	// invalid URI received
 	std::cerr << "[open]: received invalid redirection URL : '" << loc << "'" << std::endl;
@@ -217,6 +232,13 @@ int HttPosixFile::_Open(const std::string host,
       location_validity = 0;
       redirection = location;
       isopen = true;
+      if (debug) {
+	std::cerr << "[debug] redirection.host     : " << redirection.host << std::endl;
+	std::cerr << "[debug] redirection.port     : " << redirection.port << std::endl;
+	std::cerr << "[debug] redirection.ssl      : " << redirection.ssl  << std::endl;
+	std::cerr << "[debug] redirection.path     : " << redirection.path << std::endl;
+	std::cerr << "[debug] redirection.validity : unlimited" << std::endl;
+      }
     }
   }
   return -1;
@@ -226,6 +248,9 @@ int HttPosixFile::_Open(const std::string host,
 /* -------------------------------------------------------------------------- */
 int HttPosixFile::Close()
 {
+  if (debug) {
+    std::cerr << "[debug] Close [" << location.host << ":" << location.port << "{" << (location.ssl?std::string("https"):std::string("http")) <<  "} ]"<< std::endl;
+  }
   std::lock_guard<std::mutex> mutx(mtx);
   return 0;
 }
@@ -306,6 +331,9 @@ void hexDump(const std::string& data) {
 /* -------------------------------------------------------------------------- */
 int HttPosixFile::ReadV(const httplib::Ranges& ranges, void* buffer)
 {
+  if (debug) {
+    std::cerr << "[debug] ReadV [" << location.host << ":" << location.port << "{" << (location.ssl?std::string("https"):std::string("http")) << " } ] ranges:[" << ranges.size() << "]" <<std::endl;
+  }
   std::lock_guard<std::mutex> mutx(mtx);
   auto rc = ReOpen();
   if (rc) {
@@ -318,10 +346,12 @@ int HttPosixFile::ReadV(const httplib::Ranges& ranges, void* buffer)
   hd.erase(range.first, range.second);
   hd.insert(httplib::make_range_header(ranges));
 
-  for (auto i:hd) {
-    std::cerr << "[debug request]" << std::setw(24) << std::left << i.first << ": " << i.second  << std::endl;
+  if (debug) {
+    for (auto i:hd) {
+      std::cerr << "[debug] " << std::setw(24) << std::left << i.first << ": " << i.second  << std::endl;
+    }
   }
-
+  
   auto cli = HttPosix::Client(redirection.host, redirection.port, redirection.ssl);
 
   //  std::cerr << "redirection host: " << redirection.host << redirection.port << ":" << redirection.path << std::endl;
@@ -376,7 +406,9 @@ int HttPosixFile::ReadV(const httplib::Ranges& ranges, void* buffer)
     // for ( auto i: res->headers ) {
     //  std::cerr << i.first << ":" << i.second << std::endl;
     // }
-    std::cerr << "Body:" << filtered_body.size() << std::endl;
+    if (debug ) {
+      std::cerr << "[debug] returned body size:" << filtered_body.size() << std::endl;
+    }
     return filtered_body.size();
   } else {
     return -1;
@@ -387,6 +419,9 @@ int HttPosixFile::ReadV(const httplib::Ranges& ranges, void* buffer)
 /* -------------------------------------------------------------------------- */
 int HttPosixFile::Read(char* buffer, off_t offset, size_t len)
 {
+  if (debug) {
+    std::cerr << "[debug] Read [" << location.host << ":" << location.port << "{" << (location.ssl?std::string("https"):std::string("http")) << "} ] " << "{" << offset << "," << len << "}" << std::endl;
+  }  
   std::lock_guard<std::mutex> mutx(mtx);
   int rc = ReOpen();
   if (rc) {
@@ -401,34 +436,37 @@ int HttPosixFile::Read(char* buffer, off_t offset, size_t len)
 
   hd.insert({"Range", request});
 
-  //  for (auto i:hd) {
-  //    std::cerr << "[debug request]" << std::setw(24) << std::left << i.first << ": " << i.second  << std::endl;
-  //  }
-
+  if (debug) {
+    for (auto i:hd) {
+      std::cerr << "[debug]" << std::setw(24) << std::left << i.first << ": " << i.second  << std::endl;
+    }
+  }
   auto cli = HttPosix::Client(redirection.host, redirection.port, redirection.ssl);
 
-  //  std::cerr << "redirection host: " << redirection.host << redirection.port << ":" << redirection.path << std::endl;
+  if (debug) {
+    std::cerr << "[debug] redirection host: " << redirection.host << redirection.port << ":" << redirection.path << std::endl;
+  }
   off_t off=0;
-  auto res = cli->Get(
-		      redirection.path,
-		      request_header,
-		      [&](const httplib::Response &resp) {
-			if (0) {
-			  std::cerr << "Response: " << resp.status << std::endl;
-			}
-			this->res.value() = resp;
-			if (resp.status != httplib::StatusCode::PartialContent_206) {
-			  return false;
-			}
+  res = cli->Get(
+		 redirection.path,
+		 request_header,
+		 [&](const httplib::Response &resp) {
+		   if (0) {
+		     std::cerr << "Response: " << resp.status << std::endl;
+		   }
+		   this->res.value() = resp;
+		   if (resp.status != httplib::StatusCode::PartialContent_206) {
+		     return false;
+		   }
+		   return true; // return 'false' if you want to cancel the request.
+		 },
+		 [&](const char *data, size_t data_length) {
+		   // std::cerr << "[write] " << data_length << " offset: " << off <<std::endl;
+		   memcpy((char*)buffer+off, data, data_length);
+		   // std::cerr << "recv: " << data_length << std::endl;
+		   off += data_length;
 			return true; // return 'false' if you want to cancel the request.
-		      },
-		      [&](const char *data, size_t data_length) {
-			// std::cerr << "[write] " << data_length << " offset: " << off <<std::endl;
-			memcpy((char*)buffer+off, data, data_length);
-			// std::cerr << "recv: " << data_length << std::endl;
-			off += data_length;
-			return true; // return 'false' if you want to cancel the request.
-		      });
+		 });
 
   if (res) {
     return off;
