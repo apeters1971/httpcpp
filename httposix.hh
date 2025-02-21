@@ -5,9 +5,13 @@
 #include <atomic>
 #include <mutex>
 #include <condition_variable>
+#include "ringbuffer.h"
 /* -------------------------------------------------------------------------- */
 /* -------------------------------------------------------------------------- */
 #pragma once
+
+#define USE_RING_BUFFER 1
+
 /* -------------------------------------------------------------------------- */
 namespace httplib {
   class Response;
@@ -59,6 +63,7 @@ class HttPosixFileStreamer {
   HttPosixFileStreamer() {
     pipefd[0]=-1;
     pipefd[1]=-1;
+    ringfd=-1;
     location = 0;
     size = 0;
     ready = false;
@@ -89,6 +94,7 @@ private:
   
   std::unique_ptr<std::future<int>> ft;
   int pipefd[2];
+  int ringfd;
   off_t location;
   std::shared_ptr<httplib::Response> response;
   off_t offset;

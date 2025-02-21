@@ -8,7 +8,12 @@
 #include "uri.hh"
 /* -------------------------------------------------------------------------- */
 
-#define BUFFER_SIZE 100200
+#define BUFFER_SIZE 204800
+
+// Define static members
+std::unordered_map<int, std::shared_ptr<RingBuffer>> RingBufferFDManager::ringBuffers;
+std::atomic<int> RingBufferFDManager::fd_counter{100};  // Start FDs from 100 (like Linux)
+std::mutex RingBufferFDManager::mutex;
 
 int HttPosixFileStreamer::Open(const std::string host,
 			       int port,
@@ -17,19 +22,34 @@ int HttPosixFileStreamer::Open(const std::string host,
 			       const httplib::Headers& header) {
   //  std::cerr << "http(get): " <<  host << ":" << port << " " << path << std::endl;
   request_header = header;
+
+#ifdef USE_RING_BUFFER
+  ringfd = RingBufferFDManager::create();
+  ft = std::make_unique<std::future<int>>(std::async(std::launch::async, httpGet, host, port, ssl, path, ringfd, this));
+  return ringfd;
+#else
   int retc = socketpair(AF_UNIX, SOCK_STREAM, 0, pipefd);
   //  int retc = pipe(pipefd);
   
   ft = std::make_unique<std::future<int>>(std::async(std::launch::async, httpGet, host, port, ssl, path, pipefd[1], this));
   return pipefd[1];
+#endif
 }    
 
 /* -------------------------------------------------------------------------- */
 int HttPosixFileStreamer::Close() {
+#ifdef USE_RING_BUFFER
+  ft->wait();
+  if (ringfd!=-1) {
+    RingBufferFDManager::destroy(ringfd);
+  }
+  return 0;
+#else
   ::close(pipefd[0]);
   ::close(pipefd[1]);
   ft->wait();
   return 0;
+#endif
 }
 
 /* -------------------------------------------------------------------------- */
@@ -49,7 +69,11 @@ int HttPosixFileStreamer::Read(char* buffer, size_t len) {
   do {
     size_t toread = ((len-total_r)>BUFFER_SIZE)? BUFFER_SIZE:(len-total_r);
     //    std::cerr << "[toread] " << toread << std::endl;
+#ifdef USE_RING_BUFFER
+    r = RingBufferFDManager::read(ringfd, buffer+total_r, toread);
+#else
     r = ::read(pipefd[0], buffer+total_r, toread);
+#endif
     //    std::cerr << "[read] " << r << std::endl;
     total_r += (r>0)?r:0;
   } while ( (r>0) && (total_r<len));
@@ -75,15 +99,21 @@ int HttPosixFileStreamer::httpGet(const std::string& host, int port, bool ssl, c
 			}
 			streamer->setResponse(resp);
 			streamer->NotifyHeader();
+			//			RingBufferFDManager::set_eof(fd);
 			return true; // return 'false' if you want to cancel the request.
 		      },
 		      [&](const char *data, size_t data_length) {
 			//		       std::cerr << "[write] " << data_length << std::endl;
+#ifdef USE_RING_BUFFER
+			RingBufferFDManager::write(fd, data, data_length);
+#else
 			::write(fd, data, data_length);
+#endif
 			//		       std::cerr << "recv: " << data_length << std::endl;
 			return true; // return 'false' if you want to cancel the request.
 		      });
 
+  RingBufferFDManager::set_eof(fd);
   if (!res) {
     auto resp = new httplib::Response();
     resp->status = (int)res.error();
@@ -194,7 +224,15 @@ int HttPosixFile::_Open(const std::string host,
   }
   this->request_header = request_header;
   auto cli = HttPosix::Client(host, port, ssl);
-  res = cli->Get(path, request_header);
+
+  httplib::Headers hd = request_header;
+  // rewrite the range header
+  auto range = hd.equal_range("Range");
+  hd.erase(range.first, range.second);
+  hd.insert(std::pair<std::string,std::string>("Range", "0-0"));
+  httplib::Ranges ranges;
+  
+  res = cli->Get(path, hd);
   
   if (res ) {
     if (debug) {
@@ -239,6 +277,7 @@ int HttPosixFile::_Open(const std::string host,
 	std::cerr << "[debug] redirection.path     : " << redirection.path << std::endl;
 	std::cerr << "[debug] redirection.validity : unlimited" << std::endl;
       }
+      return 0;
     }
   }
   return -1;
@@ -348,7 +387,7 @@ int HttPosixFile::ReadV(const httplib::Ranges& ranges, void* buffer)
 
   if (debug) {
     for (auto i:hd) {
-      std::cerr << "[debug] " << std::setw(24) << std::left << i.first << ": " << i.second  << std::endl;
+      std::cerr << "[debug] ReadV " << std::setw(24) << std::left << i.first << ": " << i.second  << std::endl;
     }
   }
   
@@ -382,34 +421,40 @@ int HttPosixFile::ReadV(const httplib::Ranges& ranges, void* buffer)
 		      });
   */
   auto res = cli->Get(redirection.path, hd);
-
   if (res) {
     std::string filtered_body;
     if (res->body.size()) {
       std::string boundaryKey = "boundary=";
       std::string boundary;
       std::string header = res->get_header_value("Content-Type");
+
       if (header.empty()) {
 	return -1;
       }
-      // Find the position of "boundary="
-      size_t pos = header.find(boundaryKey);
-      if (pos != std::string::npos) {
-        // Extract the boundary value
-        boundary = header.substr(pos + boundaryKey.length());
+      if (header == "multipart/byteranges") {
+	// Find the position of "boundary="
+	size_t pos = header.find(boundaryKey);
+	if (pos != std::string::npos) {
+	  // Extract the boundary value
+	  boundary = header.substr(pos + boundaryKey.length());
+	} else {
+	  return -1;
+	}
+	filtered_body = parseMultipartByteranges(res->body, boundary);
+	memcpy(buffer, filtered_body.c_str(), filtered_body.size());
+	if (debug ) {
+	  std::cerr << "[debug] returned body size:" << filtered_body.size() << std::endl;
+	}
+	return filtered_body.size();
       } else {
-	return -1;
+	memcpy(buffer, res->body.c_str(), res->body.size());
+	if (debug ) {
+	  std::cerr << "[debug] returned body size:" << res->body.size() << std::endl;
+	}
+	return res->body.size();
       }
-      filtered_body = parseMultipartByteranges(res->body, boundary);
-      memcpy(buffer, filtered_body.c_str(), filtered_body.size());
     }
-    // for ( auto i: res->headers ) {
-    //  std::cerr << i.first << ":" << i.second << std::endl;
-    // }
-    if (debug ) {
-      std::cerr << "[debug] returned body size:" << filtered_body.size() << std::endl;
-    }
-    return filtered_body.size();
+    return -1;
   } else {
     return -1;
   }

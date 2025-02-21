@@ -25,5 +25,5 @@ target_link_libraries(httpc PRIVATE httposix ssl)
 # Optionally, set any compiler flags or include directories
 # target_compile_options(httposix PRIVATE ...)
 # target_include_directories(httposix PRIVATE ...)
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O2 -g")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -g")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O2 -g -DCPPHTTPLIB_USE_POLL=1")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2 -g -DCPPHTTPLIB_USE_POLL=1")

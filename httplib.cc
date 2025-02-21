@@ -680,7 +680,7 @@ private:
   size_t read_buff_off_ = 0;
   size_t read_buff_content_size_ = 0;
 
-  static const size_t read_buff_size_ = 1024l * 4;
+  static const size_t read_buff_size_ = 16*1024;
 };
 
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
@@ -2991,7 +2991,7 @@ make_range_header(const Ranges &ranges) {
   std::string field = "bytes=";
   auto i = 0;
   for (const auto &r : ranges) {
-    if (i != 0) { field += ", "; }
+    if (i != 0) { field += ","; }
     if (r.first != -1) { field += std::to_string(r.first); }
     field += '-';
     if (r.second != -1) { field += std::to_string(r.second); }
@@ -6617,6 +6617,7 @@ bool SSLClient::initialize_ssl(Socket &socket, Error &error) {
             return false;
           }
 
+	  /*
           auto server_cert = SSL_get1_peer_certificate(ssl2);
 
           if (server_cert == nullptr) {
@@ -6630,6 +6631,7 @@ bool SSLClient::initialize_ssl(Socket &socket, Error &error) {
             return false;
           }
           X509_free(server_cert);
+	  */
         }
 
         return true;
